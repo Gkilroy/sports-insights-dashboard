@@ -1,10 +1,31 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import './App.css'
 
 function App() {
   const [count, setCount] = useState(0)
+  const [oddsData, setOddsData] = useState(null)
+
+  const sportsDbKey = import.meta.env.VITE_SPORTSDB_KEY
+  const oddsApiKey = import.meta.env.VITE_ODDSAPI_KEY
+
+  useEffect(() => {
+    const fetchOdds = async () => {
+      try {
+        const response = await fetch(
+          `https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=player_props&apiKey=${oddsApiKey}`
+        )
+        const data = await response.json()
+        setOddsData(data)
+        console.log('Odds API Data:', data)
+      } catch (err) {
+        console.error('Error fetching odds:', err)
+      }
+    }
+
+    fetchOdds()
+  }, [oddsApiKey])
 
   return (
     <>
@@ -28,6 +49,15 @@ function App() {
       <p className="read-the-docs">
         Click on the Vite and React logos to learn more
       </p>
+
+      <div>
+        <h2>NBA Player Prop Odds (via OddsAPI)</h2>
+        {oddsData ? (
+          <pre>{JSON.stringify(oddsData.slice(0, 1), null, 2)}</pre>
+        ) : (
+          <p>Loading odds data...</p>
+        )}
+      </div>
     </>
   )
 }
