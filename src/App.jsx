@@ -1,25 +1,40 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 
-function App() {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [searchResults, setSearchResults] = useState(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [oddsData, setOddsData] = useState([])
+const SPORT_OPTIONS = {
+  NBA: { label: 'NBA', oddsKey: 'basketball_nba' },
+  MLB: { label: 'MLB', oddsKey: 'baseball_mlb' },
+  NFL: { label: 'NFL', oddsKey: 'americanfootball_nfl' },
+}
 
-  const sportsDbKey = import.meta.env.VITE_SPORTSDB_KEY
+function App() {
+  const [selectedSports, setSelectedSports] = useState(['NBA'])
+  const [oddsData, setOddsData] = useState([])
+  const [parlay, setParlay] = useState([])
+  const [parlaySize, setParlaySize] = useState(3)
+
   const oddsApiKey = import.meta.env.VITE_ODDSAPI_KEY
 
-  useEffect(() => {
-    const fetchOdds = async () => {
+  const toggleSport = (sportKey) => {
+    setSelectedSports((prev) =>
+      prev.includes(sportKey)
+        ? prev.filter((s) => s !== sportKey)
+        : [...prev, sportKey]
+    )
+  }
+
+  const fetchOddsAcrossSports = async () => {
+    let allOdds = []
+
+    for (const sportKey of selectedSports) {
       try {
+        const oddsSportKey = SPORT_OPTIONS[sportKey].oddsKey
         const response = await fetch(
-          `https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=player_props&apiKey=${oddsApiKey}`
+          `https://api.the-odds-api.com/v4/sports/${oddsSportKey}/odds/?regions=us&markets=player_props&apiKey=${oddsApiKey}`
         )
         const data = await response.json()
 
-        // Flatten OddsAPI structure
-        const parsedOdds = data.flatMap((event) =>
+        const parsed = data.flatMap((event) =>
           event.bookmakers.flatMap((bookmaker) =>
             bookmaker.markets.flatMap((market) =>
               market.outcomes.map((outcome) => ({
@@ -27,89 +42,98 @@ function App() {
                 line: outcome.point,
                 market: market.key,
                 bookmaker: bookmaker.key,
+                sport: sportKey,
               }))
             )
           )
         )
-        setOddsData(parsedOdds)
-        console.log('Flattened Odds Data:', parsedOdds)
+
+        allOdds.push(...parsed)
       } catch (err) {
-        console.error('Error fetching odds:', err)
+        console.error(`Error fetching odds for ${sportKey}:`, err)
       }
     }
 
-    fetchOdds()
-  }, [oddsApiKey])
-
-  const handleSearch = async () => {
-    if (!searchTerm) return
-    setIsLoading(true)
-
-    try {
-      const response = await fetch(
-        `https://www.thesportsdb.com/api/v1/json/${sportsDbKey}/searchplayers.php?p=${searchTerm}`
-      )
-      const data = await response.json()
-      setSearchResults(data?.player)
-    } catch (err) {
-      console.error('Error fetching player:', err)
-      setSearchResults(null)
-    } finally {
-      setIsLoading(false)
-    }
+    setOddsData(allOdds)
   }
+
+  const generateParlay = () => {
+    const withSimulatedStats = oddsData.map((o) => {
+      const simulatedStat = parseFloat((20 + Math.random() * 10).toFixed(1))
+      const edge = parseFloat((simulatedStat - o.line).toFixed(1))
+      return { ...o, simulatedStat, edge }
+    })
+
+    const sorted = withSimulatedStats
+      .filter((o) => !isNaN(o.line) && o.line !== null)
+      .sort((a, b) => b.edge - a.edge)
+
+    setParlay(sorted.slice(0, parlaySize))
+  }
+
+  useEffect(() => {
+    if (selectedSports.length > 0) {
+      fetchOddsAcrossSports()
+    }
+  }, [selectedSports])
 
   return (
     <div className="app-container">
-      <h1 className="main-heading">🏀 Sports Insights Dashboard</h1>
+      <h1 className="main-heading">💸 Auto Parlay Builder</h1>
 
-      <div className="search-section">
-        <input
-          type="text"
-          placeholder="Search for a player..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <button onClick={handleSearch}>Search</button>
+      {/* Multi-sport checkboxes */}
+      <div className="tabs">
+        {Object.keys(SPORT_OPTIONS).map((sportKey) => (
+          <label key={sportKey} className="checkbox-tab">
+            <input
+              type="checkbox"
+              checked={selectedSports.includes(sportKey)}
+              onChange={() => toggleSport(sportKey)}
+            />
+            {SPORT_OPTIONS[sportKey].label}
+          </label>
+        ))}
       </div>
 
-      {isLoading && <p>Loading player data...</p>}
+      {/* Parlay size slider */}
+      <div style={{ margin: '1rem 0' }}>
+        <label>
+          Parlay Size: <strong>{parlaySize}</strong> legs
+        </label>
+        <input
+          type="range"
+          min="2"
+          max="12"
+          value={parlaySize}
+          onChange={(e) => setParlaySize(Number(e.target.value))}
+          style={{ width: '100%', maxWidth: '400px' }}
+        />
+      </div>
 
-      {searchResults && searchResults.length > 0 ? (
-        <div className="results">
-          {searchResults.map((player) => {
-            const playerOdds = oddsData.find((o) =>
-              o.playerName.toLowerCase().includes(player.strPlayer.toLowerCase())
-            )
+      <button onClick={generateParlay} disabled={oddsData.length === 0}>
+        Build Parlay
+      </button>
 
-            return (
-              <div key={player.idPlayer} className="player-card">
-                <h3>{player.strPlayer}</h3>
-                <p>Team: {player.strTeam}</p>
-                <p>Position: {player.strPosition}</p>
-
-                {playerOdds ? (
-                  <p>
-                    O/U Line: <strong>{playerOdds.line}</strong> ({playerOdds.bookmaker})
-                  </p>
-                ) : (
-                  <p>No betting line found</p>
-                )}
-
-                {player.strCutout || player.strThumb ? (
-                  <img
-                    src={player.strCutout || player.strThumb}
-                    alt={player.strPlayer}
-                  />
-                ) : (
-                  <p>No image available</p>
-                )}
-              </div>
-            )
-          })}
+      {parlay.length > 0 && (
+        <div className="parlay-results">
+          <h2>🔥 Suggested Parlay ({parlaySize} Legs)</h2>
+          {parlay.map((leg, index) => (
+            <div key={index} className="player-card">
+              <h3>{leg.playerName}</h3>
+              <p>Sport: {leg.sport}</p>
+              <p>O/U Line: {leg.line}</p>
+              <p>Simulated Stat: {leg.simulatedStat}</p>
+              <p>
+                Edge:{' '}
+                <strong style={{ color: leg.edge > 0 ? 'green' : 'red' }}>
+                  {leg.edge > 0 ? '+' : ''}
+                  {leg.edge}
+                </strong>
+              </p>
+              <p>Bookmaker: {leg.bookmaker}</p>
+            </div>
+          ))}
         </div>
-      ) : (
-        !isLoading && searchTerm && <p>No results found.</p>
       )}
     </div>
   )
