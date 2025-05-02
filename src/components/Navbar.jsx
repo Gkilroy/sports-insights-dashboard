@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom'
+import './Navbar.css'
 
 function Navbar() {
   return (
-    <nav style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-      <Link to="/">Home</Link>
-      <Link to="/parlay">Parlay Builder</Link>
+    <nav className="navbar">
+      <Link to="/" className="nav-link">Home</Link>
+      <Link to="/parlay" className="nav-link">Parlay Builder</Link>
     </nav>
   )
 }
